@@ -5,7 +5,6 @@
 
 #include <cstddef>
 #include <memory>
-#include <mutex>
 
 namespace at {
 namespace detail {
