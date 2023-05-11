@@ -16,7 +16,6 @@
 #include <c10/util/typeid.h>
 #include <c10/core/SymIntArrayRef.h>
 #include <c10/util/Logging.h>
-#include <c10/util/Exception.h>
 #include <c10/core/DispatchKey.h>
 #include <c10/core/DispatchKeySet.h>
 #include <ATen/TensorSubclassLikeUtils.h>
