@@ -6,6 +6,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/DispatchStub.h>
+#include <ATen/NativeFunctions.h>
 #include <ATen/NestedTensorImpl.h>
 #include <ATen/Parallel.h>
 #include <ATen/cpu/vec/vec256/vec256.h>

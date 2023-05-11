@@ -21,6 +21,7 @@
 #include <torch/csrc/distributed/c10d/comm.hpp>
 #include <torch/csrc/distributed/c10d/logger.hpp>
 #include <torch/csrc/utils/memory.h>
+#include <ATen/NativeFunctions.h>
 
 namespace c10d {
 namespace {
