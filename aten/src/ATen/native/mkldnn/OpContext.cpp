@@ -1,4 +1,3 @@
-#include <ATen/native/mkldnn/ConvPrepack.h>
 #include <ATen/native/mkldnn/OpContext.h>
 
 #if AT_MKLDNN_ENABLED()
