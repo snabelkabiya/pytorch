@@ -23,6 +23,8 @@
 #include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/TracerMode.h>
 #include <ATen/dlpack.h>
+#include <ATen/ops/_validate_sparse_compressed_tensor_args_native.h>
+#include <ATen/ops/_validate_sparse_coo_tensor_args_native.h>
 #include <c10/core/Backend.h>
 #include <c10/core/DispatchKeySet.h>
 #include <c10/core/Layout.h>
