@@ -855,8 +855,6 @@ if(TORCH_USE_IWYU)
         "--no_fwd_decls"
         "-Xiwyu"
         "--prefix_header_includes=keep"
-        "-Xiwyu"
-        "--mapping_file=${CMAKE_CURRENT_LIST_DIR}/../tools/iwyu/all.imp"
         )
     set_property(TARGET torch_cpu PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_cmd})
   endif()
