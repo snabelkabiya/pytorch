@@ -14,7 +14,6 @@
 #include <c10/util/accumulate.h>
 
 #include <cmath>
-#include <typeinfo>
 #include <utility>
 
 namespace at {
