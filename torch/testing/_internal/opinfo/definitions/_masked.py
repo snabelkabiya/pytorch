@@ -515,11 +515,7 @@ op_db: List[OpInfo] = [
         supports_sparse=True,
         supports_sparse_csr=True,
         promotes_int_to_int64=True,
-        # FIXME: "prod_cpu" not implemented for 'Half'
-        dtypes=all_types_and_complex_and(torch.bool, torch.bfloat16),
-        dtypesIfCUDA=all_types_and_complex_and(
-            torch.bool, torch.float16, torch.bfloat16
-        ),
+        dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16),
         skips=(
             DecorateInfo(
                 unittest.expectedFailure,
@@ -572,8 +568,7 @@ op_db: List[OpInfo] = [
     ),
     OpInfo(
         "masked.cumsum",
-        dtypes=all_types_and_complex_and(torch.bfloat16),
-        dtypesIfCUDA=all_types_and_complex_and(torch.float16, torch.bfloat16),
+        dtypes=all_types_and_complex_and(torch.float16, torch.bfloat16),
         method_variant=None,
         # Runs very slowly on slow gradcheck - alternatively reduce input sizes
         gradcheck_fast_mode=True,
@@ -597,8 +592,7 @@ op_db: List[OpInfo] = [
     ),
     OpInfo(
         "masked.cumprod",
-        dtypes=all_types_and_complex_and(torch.bfloat16),
-        dtypesIfCUDA=all_types_and_complex_and(torch.float16, torch.bfloat16),
+        dtypes=all_types_and_complex_and(torch.float16, torch.bfloat16),
         method_variant=None,
         # Runs very slowly on slow gradcheck - alternatively reduce input sizes
         gradcheck_fast_mode=True,
@@ -866,7 +860,7 @@ op_db: List[OpInfo] = [
     ),
     OpInfo(
         "masked.median",
-        dtypes=floating_types_and(torch.bfloat16),
+        dtypes=floating_types_and(torch.bfloat16, torch.float16),
         dtypesIfCUDA=floating_types_and(torch.float16),
         method_variant=None,
         supports_out=False,
@@ -1167,8 +1161,7 @@ op_db: List[OpInfo] = [
     ),
     OpInfo(
         "masked.logaddexp",
-        dtypes=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.float16, torch.bfloat16),
+        dtypes=floating_types_and(torch.float16, torch.bfloat16),
         supports_out=False,
         supports_forward_ad=True,
         supports_fwgrad_bwgrad=True,
