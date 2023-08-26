@@ -32,7 +32,8 @@ from unittest import mock
 import sympy
 
 import torch
-from torch.fx.immutable_collections import immutable_list
+import torch.distributed as dist
+from torch.fx.immutable_collections import immutable_dict, immutable_list
 from torch.utils._sympy.functions import CleanDiv, FloorDiv, ModularIndexing
 
 from . import config
