@@ -2496,6 +2496,9 @@ class ShapeEnv:
 
         return SymInt(SymNode(symbol, self, int, None, fx_node=fx_node))
 
+    def is_unbacked_symint(self, symbol: sympy.Symbol) -> bool:
+        return str(symbol).startswith("i")
+
     def create_unbacked_symbool(self):
         symbol: sympy.Symbol = sympy.Symbol(f"i{next(self.unbacked_symint_counter)}", integer=True)
         self.counter["create_unbacked_symbol"] += 1
