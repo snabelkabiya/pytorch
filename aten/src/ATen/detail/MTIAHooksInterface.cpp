@@ -8,9 +8,9 @@
 namespace at {
 namespace detail {
 
-static MTIAHooksInterface* MTIA_hooks = nullptr;
 
 const MTIAHooksInterface &getMTIAHooks() {
+  static MTIAHooksInterface* MTIA_hooks = nullptr;
   static c10::once_flag once;
   c10::call_once(once, [] {
     MTIA_hooks =

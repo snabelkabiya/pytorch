@@ -1,10 +1,8 @@
 #include <ATen/Context.h>
-#include <ATen/detail/CUDAHooksInterface.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Functions.h>
 #include <ATen/Utils.h>
 #include <c10/util/accumulate.h>
-
 
 // NOLINTNEXTLINE(modernize-deprecated-headers)
 #include <stdarg.h>

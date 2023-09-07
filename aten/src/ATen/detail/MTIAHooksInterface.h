@@ -1,6 +1,5 @@
 #pragma once
 
-#include <c10/core/Device.h>
 #include <c10/util/Exception.h>
 
 #include <c10/util/Registry.h>

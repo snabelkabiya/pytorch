@@ -1,7 +1,7 @@
 #include <ATen/detail/HIPHooksInterface.h>
 
-#include <c10/util/Exception.h>
 #include <c10/util/CallOnce.h>
+#include <c10/util/Registry.h>
 
 #include <cstddef>
 #include <memory>
