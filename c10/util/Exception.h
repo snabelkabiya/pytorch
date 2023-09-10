@@ -5,7 +5,7 @@
 #include <c10/util/StringUtil.h>
 #include <c10/util/variant.h>
 
-#include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <string>
 #include <vector>

@@ -1,12 +1,9 @@
 #pragma once
 
-#include <c10/util/Array.h>
 #include <c10/util/TypeList.h>
-#include <functional>
 #include <type_traits>
 
-namespace c10 {
-namespace guts {
+namespace c10::guts {
 
 /**
  * Access information about result type or arguments from a function type.
@@ -98,7 +95,7 @@ struct make_offset_index_sequence_impl
 
 template <size_t Start, size_t... Is>
 struct make_offset_index_sequence_impl<Start, 0, Is...> {
-  typedef std::index_sequence<Is...> type;
+  using type = std::index_sequence<Is...>;
 };
 
 template <size_t Start, size_t N>
@@ -115,7 +112,7 @@ using make_offset_index_sequence =
  * 2>());
  */
 template <class Tuple, size_t... Is>
-constexpr auto tuple_elements(Tuple t, std::index_sequence<Is...>) {
+constexpr auto tuple_elements(Tuple t, std::index_sequence<Is...> /*unused*/) {
   return std::tuple<std::tuple_element_t<Is, Tuple>...>(std::get<Is>(t)...);
 }
 
@@ -211,7 +208,7 @@ template <class Mapper, class... Args, size_t... Indices>
 auto tuple_map(
     std::tuple<Args...>&& tuple,
     const Mapper& mapper,
-    std::index_sequence<Indices...>) {
+    std::index_sequence<Indices...> /*unused*/) {
   return std::tuple<decltype(mapper(std::forward<Args>(std::get<Indices>(
       tuple))))...>(mapper(std::forward<Args>(std::get<Indices>(tuple)))...);
 }
@@ -223,5 +220,4 @@ auto tuple_map(std::tuple<Args...>&& tuple, const Mapper& mapper) {
       std::move(tuple), mapper, std::index_sequence_for<Args...>());
 }
 
-} // namespace guts
 } // namespace c10

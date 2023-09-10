@@ -2,10 +2,7 @@
 #define C10_UTIL_LOGGING_H_
 
 #include <climits>
-#include <exception>
 #include <functional>
-#include <limits>
-#include <sstream>
 
 #include <c10/macros/Macros.h>
 #include <c10/util/Exception.h>

@@ -2,14 +2,12 @@
 #define C10_UTIL_STRINGUTIL_H_
 
 #include <c10/macros/Macros.h>
-#include <c10/util/string_utils.h>
 #include <c10/util/string_view.h>
 
 #include <cstddef>
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <vector>
 
 C10_CLANG_DIAGNOSTIC_PUSH()
 #if C10_CLANG_HAS_WARNING("-Wshorten-64-to-32")

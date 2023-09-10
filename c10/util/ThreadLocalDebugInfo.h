@@ -3,7 +3,6 @@
 #include <c10/macros/Export.h>
 
 #include <memory>
-#include <string>
 
 namespace c10 {
 

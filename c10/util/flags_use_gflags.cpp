@@ -1,7 +1,7 @@
-#include <c10/macros/Macros.h>
 
 #ifdef C10_USE_GFLAGS
 
+#include <c10/macros/Macros.h>
 #include <c10/util/Flags.h>
 #include <string>
 
