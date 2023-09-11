@@ -2412,6 +2412,11 @@ class ShapeEnv:
             self.name_to_node.pop(node.name)
             self.graph.erase_node(node)
 
+    def add_fx_node_metadata(self, node: torch.fx.Node) -> None:
+        from torch._dynamo.utils import get_current_node
+        node.meta["event"] = self.last_event_index()
+        node.meta["node"] = get_current_node()
+
     def _suppress_guards_tls(self):
         return getattr(TLS, "suppress_guards", False)
 
@@ -3203,7 +3208,9 @@ class ShapeEnv:
 
         # First, issue all the non-trivial guards.
         for guard in self.guards:
-            if self._maybe_evaluate_static(guard.expr) is not None:
+            static_expr = self._maybe_evaluate_static(guard.expr)
+            if static_expr is not None:
+                self.log.debug("eval %s == %s [statically known]", guard.expr, static_expr)
                 continue
             issue_guard(guard)
 
@@ -3761,6 +3768,14 @@ class ShapeEnv:
                 eql, _ = self.create_fx_call_function(operator.eq, (fx_node, concrete_val))
                 node, fresh = self.create_fx_call_function(torch._assert, (eql,))
 
+            assert node is not None
+            # If this is a fresh node, we have to remember the event index that
+            # corresponds to this assertion node.
+            # Reason: so that, given an assertion node, we can replay the ShapeEnv
+            # events until the point where this assertion node was freshly created.
+            if fresh:
+                self.add_fx_node_metadata(node)
+
         # After creating the FX node corresponding to orig_expr, we must make sure that
         # no error will be raised until the end of this function.
         #
@@ -3799,9 +3814,12 @@ class ShapeEnv:
 
             self._check_frozen(expr, concrete_val)
 
-            if torch._dynamo.config.inject_EVALUATE_EXPR_flip_equality_TESTING_ONLY and isinstance(hint, bool):
-                if isinstance(expr, (sympy.Eq, sympy.Ne)):
-                    expr = sympy.Not(expr)
+            if (
+                    torch._dynamo.config.inject_EVALUATE_EXPR_flip_equality_TESTING_ONLY
+                    and isinstance(hint, bool)
+                    and isinstance(expr, (sympy.Eq, sympy.Ne))
+            ):
+                expr = sympy.Not(expr)
 
             if isinstance(expr, (sympy.Eq, sympy.Ne)):
                 self._maybe_guard_eq(expr, bool(concrete_val))
@@ -3881,7 +3899,10 @@ class ShapeEnv:
             and fx_node is not None
             and not self._suppress_guards_tls()
         ):
-            self.create_fx_call_function(torch._assert, (fx_node,))
+            node, fresh = self.create_fx_call_function(torch._assert, (fx_node,))
+            assert node is not None
+            if fresh:
+                self.add_fx_node_metadata(node)
 
         self._check_frozen(expr, sympy.true)
 
