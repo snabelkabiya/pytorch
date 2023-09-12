@@ -21,7 +21,7 @@ namespace nn {
 /// because then storing a module would always require templatizing it.
 template <typename Derived>
 // NOLINTNEXTLINE(bugprone-exception-escape)
-class Cloneable : public Module {
+class Cloneable : public virtual Module {
  public:
   using Module::Module;
 
