@@ -590,3 +590,25 @@ class KeyedJaggedTensorVariable(UserDefinedObjectVariable):
         super().__init__(value, **kwargs)
 
     # TODO Handle getattr for _length_per_key and _offset_per_key properly.
+
+
+class RemovableHandleVariable(UserDefinedObjectVariable):
+    def __init__(
+        self,
+        value,
+        value_type=None,
+        mutable_local=None,
+        **kwargs,
+    ):
+        super().__init__(value, value_type, **kwargs)
+        self.mutable_local = mutable_local
+
+    # This reconstruct is actually pretty unique - it does not construct the object from scratch.
+    # Handles always come from a register_hook call on a tensor, and so, rerunning that for the codegen of a
+    # hook would be incorrect.
+    # Instead, the invariant is that codegen has already produced the handle and stored it at a known name.
+    def reconstruct(self, codegen):
+        if self.user_code_variable_name:
+            # It is an invariant that at this point, a STORE_FAST was executed for this name.
+            return [codegen.create_load(self.user_code_variable_name)]
+        return super().reconstruct(codegen)

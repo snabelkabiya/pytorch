@@ -644,6 +644,46 @@ class TensorVariable(VariableTracker):
                 ),
                 **options,
             )
+        elif name == "register_hook":
+            # see [On tensor.register_hook]
+            assert len(args) == 1
+            fn_var = args[0]
+
+            if isinstance(fn_var, variables.NestedUserFunctionVariable):
+                # NestedUserFunctionVariable don't carry their fn, but reconstruction builds it
+                # This should not be onerous to support when needed.
+                unimplemented("NYI - lambda variables as hooks")
+            elif isinstance(fn_var, variables.functions.FunctoolsPartialVariable):
+                fn = fn_var.as_python_constant()
+                name = fn_var.func.fn.__name__
+            else:
+                fn = fn_var.fn
+                name = fn_var.fn.__name__
+
+            handle = self.as_proxy().node.meta["example_value"].register_hook(fn)
+
+            handle_variable = variables.user_defined.RemovableHandleVariable(
+                handle,
+                user_code_variable_name=None,
+                mutable_local=variables.base.MutableLocal(),
+                **options,
+            )
+            # Note - if the hook has no source, we are forced to lift it up into a global
+            # An example of where this might happen will be if the user creates a custom hook
+            # within a compile region, or wraps an func with a source (like a global)
+            # with a functools partial.  In that case, we can end up in a situation where we
+            # have a source for the internal func, but not the partial. The real fix here is to
+            # not always lift up to globals, but to use the lowest level scope possible to match the
+            # func lifecycle.
+            src = fn_var.source if fn_var.source else tx.store_hook(name, fn)
+            if not self.source:
+                # Intermediary
+                unimplemented("Intermediary tensors with registered hooks - NYI")
+            else:
+                fn_var.source = src
+            tx.output.side_effects.register_hook(self, fn_var, handle_variable)
+            return handle_variable
+
         else:
             # Convert x.new(torch.Size) into x.new_empty(torch.Size),
             # as Tensor.new acts differently with a Size input versus a tuple input.
