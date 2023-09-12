@@ -1208,7 +1208,9 @@ class _CachedTorchDispatchMode(TorchDispatchMode):
 def context_fn_gen(policy_fn):
     """
     A helper function to generate a pair of contexts to be later passed into
-    `torch.utils.checkpoint` API. Useful for implementing selective checkpointing.
+    `torch.utils.checkpoint` API. Useful for implementing selective checkpointing + torch.compile
+    because the context functions need special logic to work with torch.compile.
+    The generated context functions also work in eager mode.
 
     Args:
         policy_fn (Callable[[Callable, List[Any], Dict[str, Any]], bool]): Policy function

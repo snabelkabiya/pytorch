@@ -416,7 +416,6 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
     @torch._dynamo.config.patch(
         "_experimental_support_context_fn_in_torch_utils_checkpoint", True
     )
-    @torch._functorch.config.patch("cse", True)
     def test_compile_selective_checkpoint_gemm_only(self):
         def selective_checkpointing_context_fn():
             no_recompute_list = [
@@ -448,6 +447,9 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
         )
         bw_compiler = functools.partial(
             count_ops,
+            # We would've expected 6 here
+            # (2 matmul recompute and 2 mm ops per fwd matmul, so 2 + 2 * 2 = 6)
+            # if we didn't enable selective checkpointing.
             freq=4,
             op=torch.ops.aten.mm.default,
         )
@@ -461,7 +463,6 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
     @torch._dynamo.config.patch(
         "_experimental_support_context_fn_in_torch_utils_checkpoint", True
     )
-    @torch._functorch.config.patch("cse", True)
     def test_compile_selective_checkpoint_custom_rule(self):
         def _get_custom_policy(meta):
             no_recompute_list = [
@@ -510,9 +511,10 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
         )
         bw_compiler = functools.partial(
             count_ops,
-            # The second mm may or may not be recomputed
-            # (since it's decided by the partitioner),
-            # so we use "greater than or equal" here.
+            # Q: How do we come to this number 4?
+            # A: We have 2 matmuls in the forward pass, each matmul contributes 2 `mm` ops in the backward pass,
+            # so we have at least 4 `mm` ops in backward pass. It's "at least" because whether second matmul in
+            # the forward pass is recomputed in the backward pass is up to the partitioner to decide.
             freq_ge=4,
             op=torch.ops.aten.mm.default,
         )
@@ -526,7 +528,6 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
     @torch._dynamo.config.patch(
         "_experimental_support_context_fn_in_torch_utils_checkpoint", True
     )
-    @torch._functorch.config.patch("cse", True)
     def test_compile_selective_checkpoint_outplace_op(self):
         def selective_checkpointing_context_fn():
             no_recompute_list = [
@@ -569,11 +570,14 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
         )
         self._validate(fn, backend, x, y)
 
+    @unittest.skip(
+        "In-place op support in selective checkpointing + torch.compile "
+        "requires TorchDispatchMode + torch.compile work to complete"
+    )
     @torch._dynamo.config.patch(
         "_experimental_support_context_fn_in_torch_utils_checkpoint", True
     )
-    @torch._functorch.config.patch("cse", True)
-    def DISABLED_test_compile_selective_checkpoint_inplace_op(self):
+    def test_compile_selective_checkpoint_inplace_op(self):
         def selective_checkpointing_context_fn():
             no_recompute_list = [
                 torch.ops.aten.mm.default,
@@ -620,7 +624,6 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
     @torch._dynamo.config.patch(
         "_experimental_support_context_fn_in_torch_utils_checkpoint", True
     )
-    @torch._functorch.config.patch("cse", True)
     def test_compile_selective_checkpoint_random_op(self):
         def selective_checkpointing_context_fn():
             no_recompute_list = [
@@ -668,7 +671,6 @@ class ActivationCheckpointingViaTagsTests(torch._dynamo.test_case.TestCase):
     @torch._dynamo.config.patch(
         "_experimental_support_context_fn_in_torch_utils_checkpoint", True
     )
-    @torch._functorch.config.patch("cse", True)
     def test_compile_selective_checkpoint_invalid_context(self):
         def gn(x, y):
             return torch.sigmoid(torch.matmul(x, y)) * y

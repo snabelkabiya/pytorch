@@ -69,6 +69,17 @@ class TagActivationCheckpoint(HigherOrderOperator):
     This operator is supposed to be used only with torch.compile stack. This
     accepts a Fx graph module which needs to be checkpointed. This operator adds
     "recomputable" tag to the nodes of the Fx graph that should be recomputed.
+
+    The goal is to:
+    1. Avoid using Dynamo to trace through saved tensor hooks.
+    2. For selective checkpointing case, let AOTAutograd trace through
+       saved tensor hooks but has special logic with TorchDispatchMode to override
+       the usual saved_tensor_hooks fn logic in order to tag the nodes.
+    3. Rely on the partitioners to actually duplicate the nodes.
+    This sits well in the torch.compile stack, because by the time graph
+    reaches partitioner, inductor has already run its functionalization of rng
+    ops. Therefore, the duplication of nodes, by design, respects the rng states
+    in the forward and recomputed forward in backward.
     """
 
     def __init__(self):
