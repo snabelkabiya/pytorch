@@ -248,13 +248,12 @@ class ReuseLine(MemoryPlanningLine):
         assert self.reused_as.get_name() not in V.graph.removed_buffers
         return self
 
-    def codegen(self, code: IndentedBuffer):
+    def codegen(self, code: IndentedBuffer, delete_old=True):
         assert self.node.get_name() not in V.graph.removed_buffers
         assert self.reused_as.get_name() not in V.graph.removed_buffers
         code.writeline(
             self.wrapper.make_buffer_reuse(
-                self.node,
-                self.reused_as,
+                self.node, self.reused_as, delete_old=delete_old
             )
         )
 
@@ -331,13 +330,15 @@ class WrapperCodeGen(CodeGen):
                 from math import inf, nan
                 from torch._inductor.hooks import run_intermediate_hooks
                 from torch._inductor.utils import maybe_profile
+                from torch._inductor.codegen.memory_planning import _align as align
 
-                from torch import empty_strided, device
+                from torch import empty, empty_strided, device
                 from {codecache.__name__} import AsyncCompile
                 from torch._inductor.select_algorithm import extern_kernels
 
                 aten = torch.ops.aten
                 assert_size_stride = torch._C._dynamo.guards.assert_size_stride
+                alloc_from_pool = torch.ops.inductor._alloc_from_pool
                 reinterpret_tensor = torch.ops.inductor._reinterpret_tensor
                 async_compile = AsyncCompile()
 
@@ -433,8 +434,13 @@ class WrapperCodeGen(CodeGen):
         return
 
     def generate_extern_kernel_alloc(self, output_name, kernel, args, origin_node):
+        ending = self.ending
+        if "view_as_complex" in str(kernel):
+            # view operation fallbacks cause issues since inductor
+            # doesn't know the memory is still needed and might reuse it.
+            ending = f".clone(){ending}"
         self.writeline(
-            f"{self.declare}{output_name} = {kernel}({', '.join(args)}){self.ending}"
+            f"{self.declare}{output_name} = {kernel}({', '.join(args)}){ending}"
         )
         if (
             self.supports_intermediate_hooks
@@ -483,7 +489,6 @@ class WrapperCodeGen(CodeGen):
         result = IndentedBuffer()
         result.splice(self.header)
 
-        out_names = V.graph.get_output_names()
         with contextlib.ExitStack() as stack:
             stack.enter_context(self.wrapper_call.indent())
             if config.profiler_mark_wrapper_call:
@@ -492,20 +497,7 @@ class WrapperCodeGen(CodeGen):
                 self.write_triton_header_once()
                 self.wrapper_call.writeline("start_graph()")
 
-            while (
-                self.lines
-                and isinstance(self.lines[-1], MemoryPlanningLine)
-                # TODO: this seems legit, NullLine has no node
-                and self.lines[-1].node.name not in out_names  # type: ignore[attr-defined]
-            ):
-                # these lines will be pointless
-                self.lines.pop()
-
-            # codegen allocations in two passes
-            planning_state = MemoryPlanningState()
-            for i in range(len(self.lines)):
-                if isinstance(self.lines[i], MemoryPlanningLine):
-                    self.lines[i] = self.lines[i].plan(planning_state)
+            self.memory_plan()
 
             device_cm_stack = contextlib.ExitStack()
             for line in self.lines:
@@ -543,6 +535,32 @@ class WrapperCodeGen(CodeGen):
         self.add_benchmark_harness(result)
 
         return result.getvaluewithlinemap()
+
+    def memory_plan(self):
+        if config.memory_planning and not V.graph.cpp_wrapper:
+            from .memory_planning import MemoryPlanner
+
+            self.lines = MemoryPlanner(self).plan(self.lines)
+        else:
+            self.memory_plan_reuse()
+
+    def memory_plan_reuse(self):
+        out_names = V.graph.get_output_names()
+
+        while (
+            self.lines
+            and isinstance(self.lines[-1], MemoryPlanningLine)
+            # TODO: this seems legit, NullLine has no node
+            and self.lines[-1].node.name not in out_names  # type: ignore[attr-defined]
+        ):
+            # these lines will be pointless
+            self.lines.pop()
+
+        # codegen allocations in two passes
+        planning_state = MemoryPlanningState()
+        for i in range(len(self.lines)):
+            if isinstance(self.lines[i], MemoryPlanningLine):
+                self.lines[i] = self.lines[i].plan(planning_state)
 
     def codegen_inputs(self, code: IndentedBuffer, graph_inputs: Dict[str, ir.Buffer]):
         """Assign all symbolic shapes to locals"""
@@ -779,22 +797,44 @@ class WrapperCodeGen(CodeGen):
         dtype = buffer.get_dtype()
         shape = tuple(buffer.get_size())
         stride = tuple(buffer.get_stride())
-        return (
-            f"{buffer.get_name()} = empty_strided("
-            f"{self.codegen_shape_tuple(shape)}, "
-            f"{self.codegen_shape_tuple(stride)}, "
-            f"device='{device.type}', dtype={dtype})"
-        )
+        return self.make_allocation(buffer.get_name(), device, dtype, shape, stride)
+
+    def make_allocation(self, name, device, dtype, shape, stride):
+        try:
+            expected = tuple(ir.make_contiguous_strides_for(shape))
+        except Exception:  # cannot determine truth value of Relational
+            expected = None
+        if stride == expected:
+            return (
+                f"{name} = empty("
+                f"{self.codegen_shape_tuple(shape)}, "
+                f"device='{device.type}', dtype={dtype})"
+            )
+        else:
+            return (
+                f"{name} = empty_strided("
+                f"{self.codegen_shape_tuple(shape)}, "
+                f"{self.codegen_shape_tuple(stride)}, "
+                f"device='{device.type}', dtype={dtype})"
+            )
+
+    def make_tensor_alias(self, new_name, old_name, comment=""):
+        return f"{self.declare}{new_name} = {old_name}{self.ending}  {self.comment} {comment}"
 
     def make_buffer_free(self, buffer):
-        return f"del {buffer.get_name()}"
+        name = buffer.get_name()
+        if name in self.freed:
+            return ""
+        else:
+            self.freed.add(name)
+            return f"del {buffer.get_name()}"
 
-    def make_buffer_reuse(self, old, new):
+    def make_buffer_reuse(self, old, new, delete_old=True):
         assert old.get_dtype() == new.get_dtype()
         old_name = old.get_name()
         new_name = new.get_name()
         del_line = ""
-        if old_name not in V.graph.get_output_names():
+        if old_name not in V.graph.get_output_names() and delete_old:
             del_line = f"; {self.make_buffer_free(old)}"
         if old.get_size() == new.get_size() and old.get_stride() == new.get_stride():
             return (
@@ -863,7 +903,6 @@ class WrapperCodeGen(CodeGen):
 
         if not self.can_reuse(buffer):
             return
-        self.freed.add(name)
 
         layout = buffer.get_layout()
         if isinstance(layout, (ir.AliasedLayout, ir.MultiOutputLayout)):
@@ -953,10 +992,13 @@ class CppWrapperCodeGen(WrapperCodeGen):
                 """
             )
 
+        from .memory_planning import ALIGN_BYTES
         self.header.splice(
             """
             #include <torch/csrc/inductor/inductor_ops.h>
             #define reinterpret_tensor torch::inductor::_reinterpret_tensor
+            #define alloc_from_pool torch::inductor::_alloc_from_pool
+            #define align(x) torch::inductor::_align(x, {ALIGN_BYTES})
             """
         )
 
@@ -1271,11 +1313,16 @@ class CppWrapperCodeGen(WrapperCodeGen):
         return f"{{{', '.join(parts)}}}"
 
     def make_buffer_free(self, buffer):
-        return (
-            ""
-            if isinstance(buffer.get_layout(), ir.MultiOutputLayout)
-            else f"{buffer.get_name()}.reset();"
-        )
+        name = buffer.get_name()
+        if name in self.freed:
+            return ""
+        else:
+            self.freed.add(name)
+            return (
+                ""
+                if isinstance(buffer.get_layout(), ir.MultiOutputLayout)
+                else f"{buffer.get_name()}.reset();"
+            )
 
     def generate_profiler_mark_wrapper_call(self, stack):
         self.wrapper_call.writeline(
@@ -1295,48 +1342,6 @@ class CppWrapperCodeGen(WrapperCodeGen):
         from .cpp import DTYPE_TO_ATEN
 
         return DTYPE_TO_ATEN[dtype]
-
-    def make_buffer_allocation(self, buffer):
-        name = buffer.get_name()
-        # outputs are passed-in in the AOT mode
-        if self.use_preallocated_output(buffer):
-            output_idx = None
-            output_buffer = None
-            for idx, output in enumerate(V.graph.graph_outputs):
-                if hasattr(output, "get_name") and name == output.get_name():
-                    output_idx = idx
-                    output_buffer = output
-                    break
-
-            assert (
-                output_idx is not None and output_buffer is not None
-            ), "Unknown output index"
-            if V.graph.sizevars.statically_known_leq(
-                buffer.get_numel(), output_buffer.get_numel()
-            ):
-                # avoid resize_output warning:
-                # "An output with one or more elements was resized since it had..."
-                if (
-                    buffer.get_size() != output_buffer.get_size()
-                    or buffer.get_stride() != output_buffer.get_stride()
-                ):
-                    size_str = self.codegen_shape_tuple(buffer.get_size())
-                    stride_str = self.codegen_shape_tuple(buffer.get_stride())
-                    buf_str = f"auto {name} = outputs[{output_idx}].as_strided({size_str}, {stride_str});"
-                else:
-                    buf_str = f"auto {name} = outputs[{output_idx}];"
-                return buf_str
-            else:
-                self.outputs_need_copy.add(name)
-
-        device = self.codegen_device(buffer.get_device())
-        dtype = self.codegen_dtype(buffer.get_dtype())
-        size = self.codegen_shape_tuple(tuple(buffer.get_size()))
-        stride = self.codegen_shape_tuple(tuple(buffer.get_stride()))
-        return (
-            f"{self.declare}{name} = {self.namespace}empty_strided("
-            f"{size}, {stride}, at::TensorOptions({device}).dtype({dtype}));"
-        )
 
     def generate_extern_kernel_args_decl_if_needed(
         self, op_overload, raw_args, output_args
@@ -1443,6 +1448,56 @@ class CppWrapperCodeGen(WrapperCodeGen):
                     fill_output_arg(output_arg, return_type)
 
         return new_tensor_args, new_int_args
+
+    def make_buffer_allocation(self, buffer):
+        name = buffer.get_name()
+        # outputs are passed-in in the AOT mode
+        if self.use_preallocated_output(buffer):
+            output_idx = None
+            output_buffer = None
+            for idx, output in enumerate(V.graph.graph_outputs):
+                if hasattr(output, "get_name") and name == output.get_name():
+                    output_idx = idx
+                    output_buffer = output
+                    break
+
+            assert (
+                output_idx is not None and output_buffer is not None
+            ), "Unknown output index"
+            if V.graph.sizevars.statically_known_leq(
+                buffer.get_numel(), output_buffer.get_numel()
+            ):
+                # avoid resize_output warning:
+                # "An output with one or more elements was resized since it had..."
+                if (
+                    buffer.get_size() != output_buffer.get_size()
+                    or buffer.get_stride() != output_buffer.get_stride()
+                ):
+                    size_str = self.codegen_shape_tuple(buffer.get_size())
+                    stride_str = self.codegen_shape_tuple(buffer.get_stride())
+                    buf_str = f"auto {name} = outputs[{output_idx}].as_strided({size_str}, {stride_str});"
+                else:
+                    buf_str = f"auto {name} = outputs[{output_idx}];"
+                return buf_str
+            else:
+                self.outputs_need_copy.add(name)
+
+        return self.make_allocation(
+                name,
+                buffer.get_device(),
+                buffer.get_dtype(),
+                buffer.get_size(),
+                buffer.stride()
+        )
+
+    def make_allocation(self, name, device, dtype, shape, stride):
+        return (
+            f"{self.declare}{name} = {self.namespace}empty_strided("
+            f"{self.codegen_shape_tuple(shape)}, "
+            f"{self.codegen_shape_tuple(stride)}, "
+            f"{self.codegen_device(device)}"
+            f".dtype({self.codegen_dtype(dtype)})){self.ending}"
+        )
 
     def generate_extern_kernel_alloc_and_find_schema_if_needed(
         self,
