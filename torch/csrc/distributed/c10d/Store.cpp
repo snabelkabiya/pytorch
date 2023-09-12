@@ -2,9 +2,6 @@
 
 namespace c10d {
 
-// Define destructor symbol for abstract base class.
-Store::~Store() = default;
-
 const std::chrono::milliseconds& Store::getTimeout() const noexcept {
   return timeout_;
 }
