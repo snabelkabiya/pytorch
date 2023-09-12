@@ -251,7 +251,6 @@ inductor_expected_failures_single_sample["cuda"] = {
     "kron": {f16},
     "linalg.eig": {f32, f64},
     "log_normal": {f16, f32, f64},
-    "masked_scatter": {f16, f32, f64},
     ("max", "reduction_with_dim"): {b8},
     ("min", "reduction_with_dim"): {b8},
     "multinomial": {f16, f32, f64},
