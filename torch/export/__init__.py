@@ -18,6 +18,13 @@ from torch.fx.experimental.symbolic_shapes import StrictMinMaxConstraint
 from torch.fx.passes.infra.pass_base import PassResult
 from torch.fx.passes.infra.pass_manager import PassManager
 
+from torch.utils._pytree import (
+    FlattenFunc,
+    FromDumpableContextFn,
+    ToDumpableContextFn,
+    UnflattenFunc,
+)
+
 
 __all__ = [
     "ArgumentKind",
@@ -33,6 +40,7 @@ __all__ = [
     "dynamic_dim",
     "export",
     "load",
+    "register_dataclass_as_pytree_node",
     "save",
 ]
 
@@ -1129,3 +1137,14 @@ def load(
     return load(
         f, extra_files=extra_files, expected_opset_version=expected_opset_version
     )
+
+
+def register_dataclass_as_pytree_node(typ: Any) -> None:
+    """
+    Args:
+        typ: the dataclass type to register
+    """
+
+    from torch._export.utils import register_dataclass_as_pytree_node
+
+    return register_dataclass_as_pytree_node(typ)

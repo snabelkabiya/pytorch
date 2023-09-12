@@ -27,7 +27,7 @@ def register_dataclass_as_pytree_node(
     *,
     to_dumpable_context: Optional[ToDumpableContextFn] = None,
     from_dumpable_context: Optional[FromDumpableContextFn] = None,
-    return_none_fields: bool = False,
+    return_none_fields: bool = True,
 ) -> None:
     assert dataclasses.is_dataclass(
         typ
