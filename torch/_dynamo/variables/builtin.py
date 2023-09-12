@@ -21,7 +21,13 @@ from ..exc import (
 )
 from ..guards import GuardBuilder
 from ..replay_record import DummyModule
-from ..source import AttrSource, is_constant_source, SuperSource, TypeSource
+from ..source import (
+    AttrSource,
+    GetItemSource,
+    is_constant_source,
+    SuperSource,
+    TypeSource,
+)
 from ..utils import (
     build_checkpoint_variable,
     check_constant_args,
@@ -1101,6 +1107,21 @@ class BuiltinVariable(VariableTracker):
                 unimplemented("tensor grad")
             else:
                 unimplemented("tensor grad")
+        elif name == "__bases__":
+            value = obj.as_python_constant()
+            if isinstance(value, type):
+                bases = value.__bases__
+                if source is None:
+                    assert len(bases) == 1 and (
+                        bases[0] is object or bases[0] is torch._C._TensorBase
+                    ), f"{value.__name__}.bases: {bases}"
+                    tuple_args = [BuiltinVariable(bases[0])]
+                else:
+                    tuple_args = [
+                        VariableBuilder(tx, GetItemSource(source, i))(b)
+                        for i, b in enumerate(bases)
+                    ]
+                return variables.TupleVariable(tuple_args, **options)
         elif isinstance(
             obj,
             (
@@ -1216,6 +1237,9 @@ class BuiltinVariable(VariableTracker):
             return VariableBuilder(tx, TypeSource(obj.source))(py_type).add_options(
                 self, obj
             )
+
+        if py_type is not None:
+            return ConstantVariable(py_type)
 
         raise UserError(
             UserErrorType.ANTI_PATTERN,
