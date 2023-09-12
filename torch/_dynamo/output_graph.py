@@ -1123,7 +1123,8 @@ class OutputGraph(Checkpointable[OutputGraphState]):
                     fake = (
                         arg.fake_tensor if arg.fake_tensor is not None else arg.example
                     )
-                    used_symbols |= free_symbols(fake)
+                    if arg.has_symbols:
+                        used_symbols |= free_symbols(fake)
 
         # After removing unused graphargs, prune unused binds_symbol
         for node in recheck_placeholders:

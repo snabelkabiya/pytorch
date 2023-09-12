@@ -110,7 +110,7 @@ class UserFunctionVariable(BaseUserFunctionVariable):
             self.is_constant = False
 
         assert isinstance(
-            fn, (types.FunctionType, torch.jit.ScriptFunction)
+            fn, (types.FunctionType, torch.jit.ScriptFunction, functools.partial)
         ), f"expected FunctionType found {typestr(fn)} {fn}"
         # unpack @torch._dynamo.optimize()(fn) wrapped function
         fn = inspect.getattr_static(fn, "_torchdynamo_inline", fn)
@@ -634,8 +634,15 @@ class FunctoolsPartialVariable(VariableTracker):
         if self.original:
             return self.original
         else:
+
+            def get_val(v):
+                if isinstance(v, variables.UserDefinedObjectVariable):
+                    return v.value
+                else:
+                    return v.as_python_constant()
+
             return functools.partial(
                 self.func.fn,
                 *[arg.as_python_constant for arg in self.args],
-                **{k: v.as_python_constant() for k, v in self.keywords.items()},
+                **{k: get_val(v) for k, v in self.keywords.items()},
             )

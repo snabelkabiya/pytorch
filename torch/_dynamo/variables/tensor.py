@@ -1,3 +1,4 @@
+import functools
 import inspect
 import operator
 import types
@@ -14,6 +15,7 @@ import torch._numpy as tnp
 
 import torch.fx
 import torch.random
+from torch._higher_order_ops.invoke import invoke
 
 from torch.fx.experimental.symbolic_shapes import free_symbols, guard_scalar, SymTypes
 
@@ -51,6 +53,11 @@ supported_const_comparison_ops = {
     "==": operator.eq,
     "!=": operator.ne,
 }
+
+
+def record_hook(*args, real_hook):
+    grad = args[0]
+    return invoke(real_hook, grad, reenter=True)
 
 
 class TensorVariable(VariableTracker):
@@ -654,6 +661,7 @@ class TensorVariable(VariableTracker):
                 # This should not be onerous to support when needed.
                 unimplemented("NYI - lambda variables as hooks")
             elif isinstance(fn_var, variables.functions.FunctoolsPartialVariable):
+                # The real fn got desugared, we need to put it back together
                 fn = fn_var.as_python_constant()
                 name = fn_var.func.fn.__name__
             else:
@@ -678,7 +686,39 @@ class TensorVariable(VariableTracker):
             src = fn_var.source if fn_var.source else tx.store_hook(name, fn)
             if not self.source:
                 # Intermediary
-                unimplemented("Intermediary tensors with registered hooks - NYI")
+                from .builder import GraphArg
+
+                original_fn = fn
+                fn = functools.partial(record_hook, real_hook=fn)
+
+                hook_proxy = None
+                for node in tx.output.root_tracer.graph.nodes:
+                    if node.op == "placeholder":
+                        if "source" in node.meta:
+                            if node.meta["source"] == src:
+                                hook_proxy = node.meta["proxy"]
+                                break
+
+                new_name = tx.store_handle("intermed_handle", handle)
+
+                if hook_proxy is None:
+                    hook_proxy = tx.output.root_tracer.create_graph_input(
+                        name, type(fn), source=src
+                    )
+                    hook_proxy.node.meta["source"] = src
+                    grapharg = GraphArg(src, fn, False, None)
+                    grapharg.has_symbols = False
+                    hook_proxy.node.meta["grapharg"] = grapharg
+                    hook_proxy.node.meta["proxy"] = hook_proxy
+                # this is a stepping stone implementation for now, the real POR to avoid recompiling on hook identity
+                # is to add an op in forward that is persisted through functionalization, and stashes hooks in a well defined
+                # place - this allows relaxing specialization from hook identity to # of hooks (and their positions)
+                self.as_proxy().register_hook(hook_proxy)
+
+                if fn_var.source:
+                    tx.output.guards.add(
+                        fn_var.source.make_guard(GuardBuilder.ID_MATCH)
+                    )
             else:
                 fn_var.source = src
             tx.output.side_effects.register_hook(self, fn_var, handle_variable)
