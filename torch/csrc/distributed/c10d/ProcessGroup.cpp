@@ -153,4 +153,18 @@ void ProcessGroup::init() {
   C10_LOG_API_USAGE_ONCE(
       fmt::format("c10d.process_group_{}", getBackendName()));
 }
+
+const std::string& ProcessGroup::getGroupName() const {
+  if (deviceTypeToBackend_.size() == 0) {
+    return "";
+  }
+  return deviceTypeToBackend_.begin()->second->getGroupName();
+}
+
+void ProcessGroup::setGroupName(const std::string& name) {
+  for (auto& kv : deviceTypeToBackend_) {
+    kv.second->setGroupName(name);
+  }
+}
+
 } // namespace c10d
